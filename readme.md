@@ -22,7 +22,7 @@ https://github.com/karpathy/nn-zero-to-hero
 - mini-GPT_bigram.py
 - mini-GPT_transformer.py
 
-to be continued...
+To be continued...
 
 
 
