@@ -66,26 +66,26 @@ def estimate_loss(): # 评估模型在训练集和验证集上的损失。该函
 class Head(nn.Module):
     """ one head of self-attention """
 
-    def __init__(self, head_size):
+    def __init__(self, head_size): 
         super().__init__()
         self.key = nn.Linear(n_embd, head_size, bias=False)
         self.query = nn.Linear(n_embd, head_size, bias=False)
         self.value = nn.Linear(n_embd, head_size, bias=False)
-        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size))) # register_buffer是一个特殊的方法，用于在模型中注册一个持久化的缓冲区（buffer）。这个缓冲区不会被视为模型的参数，因此在训练过程中不会被更新，但它会随着模型一起保存和加载。在这里，我们使用register_buffer来注册一个下三角矩阵tril，这个矩阵用于在计算自注意力时进行掩码操作，确保每个时间步只能关注之前的时间步，从而实现因果关系。
+        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size))) # register_buffer是一个特殊的方法，用于在模型中注册一个持久化的缓冲区（buffer）。这个缓冲区不会被视为模型的参数，因此在训练过程中不会被更新，但它会随着模型一起保存和加载。在这里，我们使用register_buffer来注册一个下三角矩阵tril，这个矩阵用于在计算自注意力时进行掩码操作，确保每个时间步只能关注之前的时间步，从而实现因果关系。 
 
         self.dropout = nn.Dropout(dropout) 
 
     def forward(self, x):
         # input of size (batch, time-step, channels)
-        # output of size (batch, time-step, head size)
-        B,T,C = x.shape
-        k = self.key(x)   # (B,T,head-size)
+        # output of size (batch, time-step, head-size) head_size是每个注意力头的维度，通常是嵌入维度除以注意力头的数量。这个输出表示每个时间步在该注意力头上的表示。
+        B,T,C = x.shape # B是batch size，T是时间步数，C是嵌入维度
+        k = self.key(x)   # (B,T,head-size)。(B,T,C) @ (C, head-size) -> (B,T,head-size)
         q = self.query(x) # (B,T,head-size)
         # compute attention scores ("affinities")
-        wei = q @ k.transpose(-2,-1) * k.shape[-1]**-0.5 # (B, T, head-size) @ (B, head-size, T) -> (B, T, T)
-        wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # (B, T, T)
+        wei = q @ k.transpose(-2,-1) * k.shape[-1]**-0.5 # (B, T, head-size) @ (B, head-size, T) -> (B, T, T) 
+        wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # (B, T, T) 
         wei = F.softmax(wei, dim=-1) # (B, T, T)
-        wei = self.dropout(wei)
+        wei = self.dropout(wei) 
         # perform the weighted aggregation of the values
         v = self.value(x) # (B,T,head-size)
         out = wei @ v # (B, T, T) @ (B, T, head-size) -> (B, T, head-size)
@@ -142,7 +142,7 @@ class GPTLanguageModel(nn.Module):
     def __init__(self):
         super().__init__() 
         # each token directly reads off the logits for the next token from a lookup table
-        self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
+        self.token_embedding_table = nn.Embedding(vocab_size, n_embd) # 词嵌入表
         self.position_embedding_table = nn.Embedding(block_size, n_embd) # 位置嵌入表，block_size是最大上下文长度，n_embd是嵌入维度
         self.blocks = nn.Sequential(*[Block(n_embd, n_head=n_head) for _ in range(n_layer)]) # *的作用是将列表中的元素作为位置参数传递给函数。在这里，我们创建了一个包含n_layer（6）个Block实例的列表，然后使用*将这个列表中的Block实例作为参数传递给nn.Sequential，构建了一个由多个Transformer块组成的序列模型。
         self.ln_f = nn.LayerNorm(n_embd) # final layer norm
@@ -188,11 +188,11 @@ class GPTLanguageModel(nn.Module):
             # crop idx to the last block_size tokens
             idx_cond = idx[:, -block_size:]  # 由于模型的最大上下文长度是block_size，所以在生成新token时，我们只考虑当前上下文的最后block_size个token作为输入。这是为了确保输入的长度不会超过模型的限制，同时也能让模型关注到最近的上下文信息，从而生成更相关的内容。
             # get the predictions
-            logits, loss = self(idx_cond) # logits形状为(B, T, vocab_size)，其中的每一项（[b,t]）代表了从该样本的该时间步往后预测下一个字符的概率分布
+            logits, loss = self(idx_cond) # logits形状为(B, T, vocab_size)，其中的每一项（[b,t]）代表了从该样本的该时间步往后预测下一个字符的概率分布。self(idx_cond)调用了模型的前向传播方法
             # focus only on the last time step
-            logits = logits[:, -1, :] # becomes (B, C)，只取最后一个时间步的logits，因为我们只需要根据当前上下文预测下一个字符
+            logits = logits[:, -1, :] # becomes (B, vocab_size)，只取最后一个时间步的logits，因为我们只需要根据当前上下文预测下一个字符
             # apply softmax to get probabilities
-            probs = F.softmax(logits, dim=-1) # (B, C)
+            probs = F.softmax(logits, dim=-1) # (B, vocab_size)
             # sample from the distribution
             idx_next = torch.multinomial(probs, num_samples=1) # (B, 1)
             # append sampled index to the running sequence
@@ -226,7 +226,7 @@ for iter in range(max_iters):
     logits, loss = model(xb, yb)
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
-    optimizer.step()
+    optimizer.step() # 通过调用optimizer.step()，我们更新模型的参数，使其朝着最小化损失的方向前进
 
 # generate from the model
 context = torch.zeros((1, 1), dtype=torch.long, device=device)
